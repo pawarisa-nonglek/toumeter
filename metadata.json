@@ -1,0 +1,7 @@
+{
+  "name": "TOU Meter Master",
+  "description": "แอปพลิเคชันอ่านและวิเคราะห์หน่วยมิเตอร์ TOU อัจฉริยะ รองรับการตรวจสอบความถูกต้องของข้อมูลตามรหัสมาตรฐาน PEA",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
