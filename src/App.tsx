@@ -27,6 +27,8 @@ interface MeterReading {
   customer_name: string;
   customer_id: string;
   pea_meter_id: string;
+  billing_month: number;
+  billing_year: number;
   code111: number;
   code010: number;
   code020: number;
@@ -52,12 +54,14 @@ interface HistoryItem {
   customer_name: string;
   customer_id: string;
   pea_meter_id: string;
+  billing_month: number;
+  billing_year: number;
   reading_date: string;
   data: MeterReading;
 }
 
 export default function App() {
-  const [view, setView] = useState<'home' | 'reader' | 'history' | 'detail'>('home');
+  const [view, setView] = useState<'home' | 'reader' | 'history' | 'detail' | 'report'>('home');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [currentReading, setCurrentReading] = useState<MeterReading | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -87,39 +91,48 @@ export default function App() {
     setIsAnalyzing(true);
     try {
       const file = acceptedFiles[0];
-      const reader = new FileReader();
       
-      reader.onload = async () => {
-        const base64Image = (reader.result as string).split(',')[1];
-        const result = await analyzeMeterImage(base64Image);
-        
-        if (result) {
-          setCurrentReading({
-            customer_name: result.customer_name || '',
-            customer_id: result.customer_id || '',
-            pea_meter_id: result.pea_meter_id || '',
-            code111: result.code111 || 0,
-            code010: result.code010 || 0,
-            code020: result.code020 || 0,
-            code030: result.code030 || 0,
-            code015_handwritten: result.code015_handwritten || 0,
-            code015_printed: result.code015_printed || 0,
-            code050: result.code050 || 0,
-            code016_handwritten: result.code016_handwritten || 0,
-            code016_printed: result.code016_printed || 0,
-            code060: result.code060 || 0,
-            code017_handwritten: result.code017_handwritten || 0,
-            code017_printed: result.code017_printed || 0,
-            code070: result.code070 || 0,
-            code118_handwritten: result.code118_handwritten || 0,
-            code118_printed: result.code118_printed || 0,
-            code280: result.code280 || 0,
-            reading_date: new Date().toISOString()
-          });
-          setView('reader');
-        }
-      };
-      reader.readAsDataURL(file);
+      // Use a promise to handle file reading
+      const base64Image = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.split(',')[1]);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const result = await analyzeMeterImage(base64Image);
+      
+      if (result) {
+        const now = new Date();
+        setCurrentReading({
+          customer_name: result.customer_name || '',
+          customer_id: result.customer_id || '',
+          pea_meter_id: result.pea_meter_id || '',
+          billing_month: result.billing_month || (now.getMonth() + 1),
+          billing_year: result.billing_year || (now.getFullYear() + 543), // Default to current Thai year
+          code111: result.code111 || 0,
+          code010: result.code010 || 0,
+          code020: result.code020 || 0,
+          code030: result.code030 || 0,
+          code015_handwritten: result.code015_handwritten || 0,
+          code015_printed: result.code015_printed || 0,
+          code050: result.code050 || 0,
+          code016_handwritten: result.code016_handwritten || 0,
+          code016_printed: result.code016_printed || 0,
+          code060: result.code060 || 0,
+          code017_handwritten: result.code017_handwritten || 0,
+          code017_printed: result.code017_printed || 0,
+          code070: result.code070 || 0,
+          code118_handwritten: result.code118_handwritten || 0,
+          code118_printed: result.code118_printed || 0,
+          code280: result.code280 || 0,
+          reading_date: now.toISOString()
+        });
+        setView('home');
+      }
     } catch (error) {
       console.error('Analysis failed:', error);
       alert('การวิเคราะห์รูปภาพล้มเหลว กรุณาลองใหม่อีกครั้ง');
@@ -152,9 +165,25 @@ export default function App() {
       }
     } catch (error) {
       console.error('Save failed:', error);
-      alert('บันทึกข้อมูลล้มเหลว');
+      alert('บันทึกข้อมูลล้มล้ว');
     }
   };
+
+  const months = [
+    "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+    "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
+  ];
+
+  const [reportMonth, setReportMonth] = useState<number | ''>('');
+  const [reportYear, setReportYear] = useState<number | ''>('');
+  const [reportCustomer, setReportCustomer] = useState('');
+
+  const filteredReport = history.filter(item => {
+    const matchMonth = reportMonth === '' || item.billing_month === reportMonth;
+    const matchYear = reportYear === '' || item.billing_year === reportYear;
+    const matchCustomer = reportCustomer === '' || item.customer_name.toLowerCase().includes(reportCustomer.toLowerCase());
+    return matchMonth && matchYear && matchCustomer;
+  });
 
   const calculateValidation = (data: MeterReading) => {
     const sum111 = data.code010 + data.code020 + data.code030;
@@ -227,31 +256,223 @@ export default function App() {
                   <p className="text-zinc-500 text-sm">อัปโหลดรูปภาพเพื่อวิเคราะห์ข้อมูล TOU และตรวจสอบความถูกต้อง</p>
                 </div>
 
-                <div 
-                  {...getRootProps()} 
-                  className={cn(
-                    "border-2 border-dashed rounded-3xl p-10 text-center transition-all cursor-pointer group",
-                    isDragActive ? "border-emerald-500 bg-emerald-50" : "border-zinc-200 hover:border-emerald-400 hover:bg-zinc-50",
-                    isAnalyzing && "pointer-events-none opacity-50"
-                  )}
-                >
-                  <input {...getInputProps()} />
-                  <div className="max-w-xs mx-auto space-y-4">
-                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center mx-auto group-hover:scale-110 transition-transform">
-                      {isAnalyzing ? (
-                        <div className="w-6 h-6 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <Upload className="w-6 h-6 text-zinc-400" />
-                      )}
-                    </div>
-                    <div>
-                      <p className="font-semibold">
-                        {isAnalyzing ? "กำลังวิเคราะห์ข้อมูล..." : "คลิกหรือลากรูปภาพมาวางที่นี่"}
-                      </p>
-                      <p className="text-xs text-zinc-400">รองรับไฟล์ภาพ JPG, PNG</p>
+                {!currentReading ? (
+                  <div 
+                    {...getRootProps()} 
+                    className={cn(
+                      "border-2 border-dashed rounded-3xl p-10 text-center transition-all cursor-pointer group",
+                      isDragActive ? "border-emerald-500 bg-emerald-50" : "border-zinc-200 hover:border-emerald-400 hover:bg-zinc-50",
+                      isAnalyzing && "pointer-events-none opacity-50"
+                    )}
+                  >
+                    <input {...getInputProps()} />
+                    <div className="max-w-xs mx-auto space-y-4">
+                      <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center mx-auto group-hover:scale-110 transition-transform">
+                        {isAnalyzing ? (
+                          <div className="w-6 h-6 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <Upload className="w-6 h-6 text-zinc-400" />
+                        )}
+                      </div>
+                      <div>
+                        <p className="font-semibold">
+                          {isAnalyzing ? "กำลังวิเคราะห์ข้อมูล..." : "คลิกหรือลากรูปภาพมาวางที่นี่"}
+                        </p>
+                        <p className="text-xs text-zinc-400">รองรับไฟล์ภาพ JPG, PNG</p>
+                      </div>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="space-y-6"
+                  >
+                    <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-black/5 shadow-sm">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-500">
+                          <CheckCircle2 className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <p className="font-bold text-sm">วิเคราะห์ข้อมูลสำเร็จ</p>
+                          <p className="text-xs text-zinc-500">กรุณาตรวจสอบข้อมูลก่อนบันทึก</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => setCurrentReading(null)}
+                          className="px-4 py-2 text-sm font-bold text-zinc-500 hover:bg-zinc-100 rounded-xl transition-colors"
+                        >
+                          ยกเลิก
+                        </button>
+                        <button 
+                          onClick={handleSave}
+                          className="bg-emerald-500 text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 transition-colors"
+                        >
+                          <Save className="w-4 h-4" />
+                          บันทึกข้อมูล
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                      {/* Customer Info Card */}
+                      <div className="lg:col-span-1 space-y-6">
+                        <div className="bg-white p-6 rounded-2xl border border-black/5 shadow-sm space-y-4">
+                          <h3 className="font-bold text-zinc-400 uppercase text-[10px] tracking-widest">ข้อมูลผู้ใช้ไฟฟ้า</h3>
+                          <div className="space-y-3">
+                            <div>
+                              <label className="text-xs text-zinc-400 block mb-1">ชื่อผู้ใช้ไฟฟ้า</label>
+                              <input 
+                                type="text" 
+                                value={currentReading.customer_name}
+                                onChange={(e) => setCurrentReading({...currentReading, customer_name: e.target.value})}
+                                className="w-full bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-zinc-400 block mb-1">หมายเลขผู้ใช้ไฟฟ้า</label>
+                              <input 
+                                type="text" 
+                                value={currentReading.customer_id}
+                                onChange={(e) => setCurrentReading({...currentReading, customer_id: e.target.value})}
+                                className="w-full bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-zinc-400 block mb-1">หมายเลขมิเตอร์ PEA</label>
+                              <input 
+                                type="text" 
+                                value={currentReading.pea_meter_id}
+                                onChange={(e) => setCurrentReading({...currentReading, pea_meter_id: e.target.value})}
+                                className="w-full bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                              />
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-xs text-zinc-400 block mb-1">รอบเดือน</label>
+                                <select 
+                                  value={currentReading.billing_month}
+                                  onChange={(e) => setCurrentReading({...currentReading, billing_month: parseInt(e.target.value)})}
+                                  className="w-full bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                >
+                                  {months.map((m, i) => (
+                                    <option key={i} value={i + 1}>{m}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="text-xs text-zinc-400 block mb-1">ปี (พ.ศ.)</label>
+                                <input 
+                                  type="number" 
+                                  value={currentReading.billing_year}
+                                  onChange={(e) => setCurrentReading({...currentReading, billing_year: parseInt(e.target.value)})}
+                                  className="w-full bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Validation Summary */}
+                        <div className="bg-white p-6 rounded-2xl border border-black/5 shadow-sm space-y-4">
+                          <h3 className="font-bold text-zinc-400 uppercase text-[10px] tracking-widest">สรุปการตรวจสอบ</h3>
+                          <div className="space-y-3">
+                            {(() => {
+                              const v = calculateValidation(currentReading);
+                              return (
+                                <>
+                                  <ValidationItem label="รหัส 111 (Total)" isValid={v.is111Valid} />
+                                  <ValidationItem label="รหัส 015 (050)" isValid={v.is015Valid} />
+                                  <ValidationItem label="รหัส 016 (060)" isValid={v.is016Valid} />
+                                  <ValidationItem label="รหัส 017 (070)" isValid={v.is017Valid} />
+                                  <ValidationItem label="รหัส 118 (280)" isValid={v.is118Valid} />
+                                </>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Data Grid */}
+                      <div className="lg:col-span-2 space-y-6">
+                        <div className="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
+                          <div className="p-4 border-b border-zinc-50 bg-zinc-50/50 flex items-center justify-between">
+                            <h3 className="font-bold text-sm">รายละเอียดค่าที่อ่านได้</h3>
+                            <span className="text-[10px] font-bold text-emerald-500 bg-emerald-50 px-2 py-1 rounded-full">หน่วย: kWh / kW</span>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="text-zinc-400 text-left border-b border-zinc-50">
+                                  <th className="px-6 py-3 font-medium">รหัส</th>
+                                  <th className="px-6 py-3 font-medium">รายการ</th>
+                                  <th className="px-6 py-3 font-medium text-right">ค่าที่อ่านได้</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-zinc-50">
+                                <DataRow code="111" label="Total Energy" value={currentReading.code111} />
+                                <DataRow code="010" label="On-Peak Energy" value={currentReading.code010} />
+                                <DataRow code="020" label="Off-Peak Energy" value={currentReading.code020} />
+                                <DataRow code="030" label="Holiday Energy" value={currentReading.code030} />
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        {/* Analysis Box */}
+                        <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 space-y-4">
+                          <div className="flex items-center gap-2 text-emerald-700">
+                            <AlertCircle className="w-5 h-5" />
+                            <h3 className="font-bold">ผลการวิเคราะห์ทางเทคนิค</h3>
+                          </div>
+                          {(() => {
+                            const v = calculateValidation(currentReading);
+                            return (
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+                                <AnalysisCard 
+                                  label="ผลรวม 010+020+030" 
+                                  value={v.sum111} 
+                                  target={currentReading.code111} 
+                                  isValid={v.is111Valid} 
+                                  unit="kWh"
+                                />
+                                <AnalysisCard 
+                                  label="ผลต่าง 015 (มือ-พิมพ์)" 
+                                  value={v.diff015} 
+                                  target={currentReading.code050} 
+                                  isValid={v.is015Valid} 
+                                  targetCode="050"
+                                />
+                                <AnalysisCard 
+                                  label="ผลต่าง 016 (มือ-พิมพ์)" 
+                                  value={v.diff016} 
+                                  target={currentReading.code060} 
+                                  isValid={v.is016Valid} 
+                                  targetCode="060"
+                                />
+                                <AnalysisCard 
+                                  label="ผลต่าง 017 (มือ-พิมพ์)" 
+                                  value={v.diff017} 
+                                  target={currentReading.code070} 
+                                  isValid={v.is017Valid} 
+                                  targetCode="070"
+                                />
+                                <AnalysisCard 
+                                  label="ผลต่าง 118 (มือ-พิมพ์)" 
+                                  value={v.diff118} 
+                                  target={currentReading.code280} 
+                                  isValid={v.is118Valid} 
+                                  targetCode="280"
+                                />
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
               </section>
 
               {/* History Section */}
@@ -261,15 +482,24 @@ export default function App() {
                     <History className="w-5 h-5 text-emerald-500" />
                     <h2 className="text-xl font-bold">ประวัติการบันทึกผล</h2>
                   </div>
-                  <div className="relative max-w-md w-full">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-                    <input 
-                      type="text" 
-                      placeholder="ค้นหาชื่อ, หมายเลขผู้ใช้..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full bg-white border border-black/5 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 shadow-sm"
-                    />
+                  <div className="flex flex-col md:flex-row items-center gap-3 max-w-2xl w-full">
+                    <div className="relative flex-1 w-full">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                      <input 
+                        type="text" 
+                        placeholder="ค้นหาชื่อ, หมายเลขผู้ใช้..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full bg-white border border-black/5 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 shadow-sm"
+                      />
+                    </div>
+                    <button 
+                      onClick={() => setView('report')}
+                      className="flex items-center gap-2 px-4 py-2 bg-white border border-black/5 rounded-xl text-sm font-bold hover:bg-zinc-50 transition-colors whitespace-nowrap shadow-sm"
+                    >
+                      <FileText className="w-4 h-4 text-emerald-500" />
+                      รายงานรายเดือน
+                    </button>
                   </div>
                 </div>
 
@@ -323,12 +553,14 @@ export default function App() {
             </motion.div>
           )}
 
-          {view === 'reader' && currentReading && (
+
+
+          {view === 'report' && (
             <motion.div 
-              key="reader"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
+              key="report"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
               className="space-y-6"
             >
               <div className="flex items-center justify-between">
@@ -339,151 +571,98 @@ export default function App() {
                   <ArrowLeft className="w-4 h-4" />
                   <span>ย้อนกลับ</span>
                 </button>
-                <button 
-                  onClick={handleSave}
-                  className="bg-emerald-500 text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 transition-colors"
-                >
-                  <Save className="w-4 h-4" />
-                  บันทึกข้อมูล
-                </button>
+                <h2 className="text-2xl font-bold">รายงานสรุปรายเดือน</h2>
+                <div className="w-20" />
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Customer Info Card */}
-                <div className="lg:col-span-1 space-y-6">
-                  <div className="bg-white p-6 rounded-2xl border border-black/5 shadow-sm space-y-4">
-                    <h3 className="font-bold text-zinc-400 uppercase text-[10px] tracking-widest">ข้อมูลผู้ใช้ไฟฟ้า</h3>
-                    <div className="space-y-3">
-                      <div>
-                        <label className="text-xs text-zinc-400 block mb-1">ชื่อผู้ใช้ไฟฟ้า</label>
-                        <input 
-                          type="text" 
-                          value={currentReading.customer_name}
-                          onChange={(e) => setCurrentReading({...currentReading, customer_name: e.target.value})}
-                          className="w-full bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-zinc-400 block mb-1">หมายเลขผู้ใช้ไฟฟ้า</label>
-                        <input 
-                          type="text" 
-                          value={currentReading.customer_id}
-                          onChange={(e) => setCurrentReading({...currentReading, customer_id: e.target.value})}
-                          className="w-full bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-zinc-400 block mb-1">หมายเลขมิเตอร์ PEA</label>
-                        <input 
-                          type="text" 
-                          value={currentReading.pea_meter_id}
-                          onChange={(e) => setCurrentReading({...currentReading, pea_meter_id: e.target.value})}
-                          className="w-full bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                        />
-                      </div>
-                    </div>
+              <div className="bg-white p-6 rounded-3xl border border-black/5 shadow-sm space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className="text-xs text-zinc-400 block mb-1">เลือกเดือน</label>
+                    <select 
+                      value={reportMonth}
+                      onChange={(e) => setReportMonth(e.target.value === '' ? '' : parseInt(e.target.value))}
+                      className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2 text-sm font-medium"
+                    >
+                      <option value="">ทั้งหมด</option>
+                      {months.map((m, i) => (
+                        <option key={i} value={i + 1}>{m}</option>
+                      ))}
+                    </select>
                   </div>
-
-                  {/* Validation Summary */}
-                  <div className="bg-white p-6 rounded-2xl border border-black/5 shadow-sm space-y-4">
-                    <h3 className="font-bold text-zinc-400 uppercase text-[10px] tracking-widest">สรุปการตรวจสอบ</h3>
-                    <div className="space-y-3">
-                      {(() => {
-                        const v = calculateValidation(currentReading);
-                        return (
-                          <>
-                            <ValidationItem label="รหัส 111 (Total)" isValid={v.is111Valid} />
-                            <ValidationItem label="รหัส 015 (050)" isValid={v.is015Valid} />
-                            <ValidationItem label="รหัส 016 (060)" isValid={v.is016Valid} />
-                            <ValidationItem label="รหัส 017 (070)" isValid={v.is017Valid} />
-                            <ValidationItem label="รหัส 118 (280)" isValid={v.is118Valid} />
-                          </>
-                        );
-                      })()}
-                    </div>
+                  <div>
+                    <label className="text-xs text-zinc-400 block mb-1">เลือกปี (พ.ศ.)</label>
+                    <input 
+                      type="number" 
+                      placeholder="เช่น 2567"
+                      value={reportYear}
+                      onChange={(e) => setReportYear(e.target.value === '' ? '' : parseInt(e.target.value))}
+                      className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2 text-sm font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-zinc-400 block mb-1">ชื่อผู้ใช้ไฟฟ้า</label>
+                    <input 
+                      type="text" 
+                      placeholder="ค้นหาชื่อ..."
+                      value={reportCustomer}
+                      onChange={(e) => setReportCustomer(e.target.value)}
+                      className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2 text-sm font-medium"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <button 
+                      className="w-full bg-emerald-500 text-white py-2 rounded-xl font-bold shadow-lg shadow-emerald-500/20"
+                    >
+                      ดึงข้อมูลรายงาน
+                    </button>
                   </div>
                 </div>
 
-                {/* Data Grid */}
-                <div className="lg:col-span-2 space-y-6">
-                  <div className="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
-                    <div className="p-4 border-b border-zinc-50 bg-zinc-50/50 flex items-center justify-between">
-                      <h3 className="font-bold text-sm">รายละเอียดค่าที่อ่านได้</h3>
-                      <span className="text-[10px] font-bold text-emerald-500 bg-emerald-50 px-2 py-1 rounded-full">หน่วย: kWh / kW</span>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="text-zinc-400 text-left border-b border-zinc-50">
-                            <th className="px-6 py-3 font-medium">รหัส</th>
-                            <th className="px-6 py-3 font-medium">รายการ</th>
-                            <th className="px-6 py-3 font-medium text-right">ค่าที่อ่านได้</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-zinc-50">
-                          <DataRow code="111" label="Total Energy" value={currentReading.code111} />
-                          <DataRow code="010" label="On-Peak Energy" value={currentReading.code010} />
-                          <DataRow code="020" label="Off-Peak Energy" value={currentReading.code020} />
-                          <DataRow code="030" label="Holiday Energy" value={currentReading.code030} />
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* Analysis Box */}
-                  <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 space-y-4">
-                    <div className="flex items-center gap-2 text-emerald-700">
-                      <AlertCircle className="w-5 h-5" />
-                      <h3 className="font-bold">ผลการวิเคราะห์ทางเทคนิค</h3>
-                    </div>
-                    {(() => {
-                      const v = calculateValidation(currentReading);
-                      return (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
-                          <AnalysisCard 
-                            label="ผลรวม 010+020+030" 
-                            value={v.sum111} 
-                            target={currentReading.code111} 
-                            isValid={v.is111Valid} 
-                            unit="kWh"
-                          />
-                          <AnalysisCard 
-                            label="ผลต่าง 015 (มือ-พิมพ์)" 
-                            value={v.diff015} 
-                            target={currentReading.code050} 
-                            isValid={v.is015Valid} 
-                            targetCode="050"
-                          />
-                          <AnalysisCard 
-                            label="ผลต่าง 016 (มือ-พิมพ์)" 
-                            value={v.diff016} 
-                            target={currentReading.code060} 
-                            isValid={v.is016Valid} 
-                            targetCode="060"
-                          />
-                          <AnalysisCard 
-                            label="ผลต่าง 017 (มือ-พิมพ์)" 
-                            value={v.diff017} 
-                            target={currentReading.code070} 
-                            isValid={v.is017Valid} 
-                            targetCode="070"
-                          />
-                          <AnalysisCard 
-                            label="ผลต่าง 118 (มือ-พิมพ์)" 
-                            value={v.diff118} 
-                            target={currentReading.code280} 
-                            isValid={v.is118Valid} 
-                            targetCode="280"
-                          />
-                        </div>
-                      );
-                    })()}
-                  </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-zinc-400 text-left border-b border-zinc-50">
+                        <th className="px-6 py-4 font-medium">รอบเดือน/ปี</th>
+                        <th className="px-6 py-4 font-medium">ชื่อผู้ใช้ไฟฟ้า</th>
+                        <th className="px-6 py-4 font-medium">หมายเลขผู้ใช้</th>
+                        <th className="px-6 py-4 font-medium text-right">111 (Total)</th>
+                        <th className="px-6 py-4 font-medium text-right">010 (Peak)</th>
+                        <th className="px-6 py-4 font-medium text-right">020 (Off-Peak)</th>
+                        <th className="px-6 py-4 font-medium text-right">สถานะ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-50">
+                      {filteredReport.map((item) => (
+                        <tr key={item.id} className="hover:bg-zinc-50/50 transition-colors">
+                          <td className="px-6 py-4 font-medium">{months[(item.billing_month || 1) - 1]} {item.billing_year}</td>
+                          <td className="px-6 py-4 font-bold">{item.customer_name}</td>
+                          <td className="px-6 py-4 text-zinc-500">{item.customer_id}</td>
+                          <td className="px-6 py-4 text-right font-mono">{item.data.code111.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-right font-mono">{item.data.code010.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-right font-mono">{item.data.code020.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-right">
+                            {calculateValidation(item.data).is111Valid ? (
+                              <span className="text-emerald-500 bg-emerald-50 px-2 py-1 rounded-full text-[10px] font-bold">ปกติ</span>
+                            ) : (
+                              <span className="text-red-500 bg-red-50 px-2 py-1 rounded-full text-[10px] font-bold">ผิดปกติ</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredReport.length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="px-6 py-12 text-center text-zinc-400">
+                            ไม่พบข้อมูลรายงานตามเงื่อนไขที่เลือก
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </motion.div>
           )}
-
           {view === 'detail' && selectedReading && (
             <motion.div 
               key="detail"

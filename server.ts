@@ -12,6 +12,8 @@ db.exec(`
     customer_name TEXT,
     customer_id TEXT,
     pea_meter_id TEXT,
+    billing_month INTEGER,
+    billing_year INTEGER,
     reading_date DATETIME DEFAULT CURRENT_TIMESTAMP,
     data_json TEXT
   )
@@ -45,10 +47,13 @@ async function startServer() {
   });
 
   app.post("/api/readings", (req, res) => {
-    const { customer_name, customer_id, pea_meter_id, data } = req.body;
+    const { customer_name, customer_id, pea_meter_id, billing_month, billing_year, ...data } = req.body;
+    // If data is empty (because it was sent flat), use the whole body as data
+    const dataToStore = Object.keys(data).length > 0 ? data : req.body;
+    
     const info = db.prepare(
-      "INSERT INTO readings (customer_name, customer_id, pea_meter_id, data_json) VALUES (?, ?, ?, ?)"
-    ).run(customer_name, customer_id, pea_meter_id, JSON.stringify(data));
+      "INSERT INTO readings (customer_name, customer_id, pea_meter_id, billing_month, billing_year, data_json) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(customer_name, customer_id, pea_meter_id, billing_month, billing_year, JSON.stringify(dataToStore));
     
     res.json({ id: info.lastInsertRowid });
   });

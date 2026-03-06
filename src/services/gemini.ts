@@ -22,10 +22,12 @@ export interface TOUData {
   customer_name?: string;
   customer_id?: string;
   pea_meter_id?: string;
+  billing_month?: number;
+  billing_year?: number;
 }
 
 export async function analyzeMeterImage(base64Image: string): Promise<TOUData> {
-  const model = "gemini-3.1-pro-preview";
+  const model = "gemini-3-flash-preview";
   
   const prompt = `
     Extract TOU meter reading data from this image. 
@@ -50,6 +52,8 @@ export async function analyzeMeterImage(base64Image: string): Promise<TOUData> {
     - Customer Name (ชื่อผู้ใช้ไฟฟ้า)
     - Customer ID (หมายเลขผู้ใช้ไฟฟ้า)
     - PEA Meter ID (หมายเลขมิเตอร์)
+    - Billing Month (รอบเดือน) as a number (1-12)
+    - Billing Year (ปี) as a number (e.g., 2567 or 2024)
     
     Return the data in the specified JSON format. If a value is not found, use 0.
   `;
@@ -63,7 +67,7 @@ export async function analyzeMeterImage(base64Image: string): Promise<TOUData> {
           {
             inlineData: {
               mimeType: "image/jpeg",
-              data: base64Image.split(",")[1] || base64Image,
+              data: base64Image,
             },
           },
         ],
@@ -93,6 +97,8 @@ export async function analyzeMeterImage(base64Image: string): Promise<TOUData> {
           customer_name: { type: Type.STRING },
           customer_id: { type: Type.STRING },
           pea_meter_id: { type: Type.STRING },
+          billing_month: { type: Type.NUMBER },
+          billing_year: { type: Type.NUMBER },
         },
         required: ["code111", "code010", "code020", "code030"],
       },
